@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
+	"github.com/ppopth/discv5-tools/crawler"
 )
 
 var (
@@ -27,4 +28,7 @@ func main() {
 	for _, url := range bootUrls {
 		bootNodes = append(bootNodes, enode.MustParse(url))
 	}
+
+	cfg := &crawler.Config{BootNodes: bootNodes}
+	_ = crawler.New(cfg)
 }
