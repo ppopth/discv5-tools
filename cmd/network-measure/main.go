@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -29,6 +30,19 @@ func main() {
 		bootNodes = append(bootNodes, enode.MustParse(url))
 	}
 
-	cfg := &crawler.Config{BootNodes: bootNodes}
-	_ = crawler.New(cfg)
+	cfg := &crawler.Config{
+		BootNodes: bootNodes,
+		Logger:    log.New(os.Stderr, "crawler: ", log.LstdFlags|log.Lmsgprefix),
+	}
+	cr := crawler.New(cfg)
+	cr.Start()
+	defer cr.Stop()
+	for {
+		nd, err := cr.GetNode()
+		if err != nil {
+			log.Fatalf("the crawler stopped unexpectedly: %v", err)
+		}
+		// TODO
+		_ = nd
+	}
 }
