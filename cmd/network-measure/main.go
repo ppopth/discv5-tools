@@ -9,6 +9,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
 	"github.com/ppopth/discv5-tools/crawler"
+	"github.com/ppopth/discv5-tools/measure"
 )
 
 var (
@@ -37,12 +38,16 @@ func main() {
 	cr := crawler.New(cfg)
 	cr.Start()
 	defer cr.Stop()
+
+	client, err := measure.Listen()
+	if err != nil {
+		log.Fatalf("the measurement client cannot be created: %v", err)
+	}
 	for {
 		nd, err := cr.GetNode()
 		if err != nil {
 			log.Fatalf("the crawler stopped unexpectedly: %v", err)
 		}
-		// TODO
-		_ = nd
+		client.Run(nd)
 	}
 }
