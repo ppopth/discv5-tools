@@ -1,12 +1,24 @@
 package measure
 
 import (
+	"errors"
 	"net"
+	"sync"
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/p2p/discover/v5wire"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ppopth/discv5-tools/wire"
+)
+
+const (
+	maxPacketSize = 1280
+	timeout = 3 * time.Second
+)
+
+var (
+	errTimeout = errors.New("the request reached the timeout")
 )
 
 type Result struct {
@@ -14,9 +26,23 @@ type Result struct {
 	LossRate float64
 }
 
+type call struct {
+	nd     *enode.Node
+	head   *v5wire.Header
+	respCh chan<- *v5wire.Header
+}
+
 type Client struct {
 	ln      *enode.LocalNode
 	usocket *net.UDPConn
+	// Used to access activeCallByNonce from multiple routines.
+	lock sync.Mutex
+	// The map used to find the active call by the nonce.
+	activeCallByNonce map[v5wire.Nonce]call
+	// Shutdown stuff.
+	closeOnce sync.Once
+	// Used to wait for the goroutines to finish.
+	loopWG sync.WaitGroup
 }
 
 func Listen() (*Client, error) {
@@ -42,10 +68,65 @@ func Listen() (*Client, error) {
 	}
 	usocket := socket.(*net.UDPConn)
 
-	return &Client{ln, usocket}, nil
+	client := &Client{
+		ln:      ln,
+		usocket: usocket,
+
+		activeCallByNonce: make(map[v5wire.Nonce]call),
+	}
+	client.loopWG.Add(1)
+	go client.readLoop()
+
+	return client, nil
 }
 
-func (c *Client) Run(nd *enode.Node) (*Result, error) {
+func (c *Client) readLoop() {
+	defer c.loopWG.Done()
+	buf := make([]byte, maxPacketSize)
+	for {
+		nbytes, _, err := c.usocket.ReadFromUDP(buf)
+		if err != nil {
+			return
+		}
+		content := buf[:nbytes]
+		head, msgData, err := wire.DecodeRawPacket(content, c.ln.ID())
+		if err != nil {
+			// TODO: Log the error
+			continue
+		}
+		_, err = wire.DecodeWhoareyouAuthData(head)
+		if err != nil {
+			// TODO: Log the error
+			continue
+		}
+		if len(msgData) != 0 {
+			// TODO: Log the error
+			continue
+		}
+
+		c.lock.Lock()
+		cl, ok := c.activeCallByNonce[head.Nonce]
+		if ok {
+			delete(c.activeCallByNonce, head.Nonce)
+		}
+		c.lock.Unlock()
+
+		if !ok {
+			// TODO: Log the error
+			continue
+		}
+		cl.respCh <- head
+	}
+}
+
+func (c *Client) Close() {
+	c.closeOnce.Do(func() {
+		c.usocket.Close()
+		c.loopWG.Wait()
+	})
+}
+
+func (c *Client) send(nd *enode.Node) (*v5wire.Header, error) {
 	// Generate random packet.
 	head, msgData, err := wire.GenRandomPacket(c.ln.ID(), nd.ID())
 	if err != nil {
@@ -58,7 +139,30 @@ func (c *Client) Run(nd *enode.Node) (*Result, error) {
 		return nil, err
 	}
 
+	c.lock.Lock()
+	ch := make(chan *v5wire.Header)
+	cl := call{nd, &head, ch}
+	c.activeCallByNonce[head.Nonce] = cl
+	c.lock.Unlock()
+
 	addr := &net.UDPAddr{IP: nd.IP(), Port: nd.UDP()}
 	_, err = c.usocket.WriteToUDP(encoded, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	select {
+	case <-time.After(timeout):
+		c.lock.Lock()
+		delete(c.activeCallByNonce, head.Nonce)
+		c.lock.Unlock()
+		return nil, errTimeout
+	case respHead := <-ch:
+		return respHead, nil
+	}
+}
+
+func (c *Client) Run(nd *enode.Node) (*Result, error) {
+	c.send(nd)
 	return &Result{time.Duration(0), 0}, nil
 }

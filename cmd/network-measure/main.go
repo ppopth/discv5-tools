@@ -48,6 +48,8 @@ func main() {
 		if err != nil {
 			log.Fatalf("the crawler stopped unexpectedly: %v", err)
 		}
-		client.Run(nd)
+		go func(){
+			client.Run(nd)
+		}()
 	}
 }
