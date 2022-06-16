@@ -14,7 +14,8 @@ import (
 
 const (
 	maxPacketSize = 1280
-	timeout = 3 * time.Second
+	maxRequests   = 20
+	timeout       = 3 * time.Second
 )
 
 var (
@@ -39,6 +40,8 @@ type Client struct {
 	lock sync.Mutex
 	// The map used to find the active call by the nonce.
 	activeCallByNonce map[v5wire.Nonce]call
+	// The semaphore to limit the number of active calls.
+	semaphore chan interface{}
 	// Shutdown stuff.
 	closeOnce sync.Once
 	// Used to wait for the goroutines to finish.
@@ -73,6 +76,7 @@ func Listen() (*Client, error) {
 		usocket: usocket,
 
 		activeCallByNonce: make(map[v5wire.Nonce]call),
+		semaphore:         make(chan interface{}, maxRequests),
 	}
 	client.loopWG.Add(1)
 	go client.readLoop()
@@ -127,6 +131,13 @@ func (c *Client) Close() {
 }
 
 func (c *Client) send(nd *enode.Node) (*v5wire.Header, error) {
+	// Use the semaphore to limit the number of active calls.
+	var empty interface{}
+	c.semaphore <- empty
+	defer func() {
+		<-c.semaphore
+	}()
+
 	// Generate random packet.
 	head, msgData, err := wire.GenRandomPacket(c.ln.ID(), nd.ID())
 	if err != nil {
