@@ -15,6 +15,7 @@ import (
 const (
 	maxPacketSize = 1280
 	maxRequests   = 20
+	numAttempts   = 100
 	timeout       = 3 * time.Second
 )
 
@@ -174,6 +175,24 @@ func (c *Client) send(nd *enode.Node) (*v5wire.Header, error) {
 }
 
 func (c *Client) Run(nd *enode.Node) (*Result, error) {
-	c.send(nd)
-	return &Result{time.Duration(0), 0}, nil
+	avgRtt := int64(0)
+	timeouts := 0
+	for i := 0; i < numAttempts; i++ {
+		start := time.Now()
+		_, err := c.send(nd)
+		if err == errTimeout {
+			timeouts++
+			continue
+		} else if err != nil {
+			return nil, err
+		}
+		elapsed := time.Since(start)
+		avgRtt += int64(elapsed)
+	}
+	avgRtt /= numAttempts
+	result := &Result{
+		Rtt:      time.Duration(avgRtt),
+		LossRate: float64(timeouts)/numAttempts,
+	}
+	return result, nil
 }
