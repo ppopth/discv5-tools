@@ -14,6 +14,8 @@ import (
 
 var (
 	bootnodesFlag = flag.String("bootnodes", "", "Comma separated nodes used for bootstrapping")
+	crawlFlag     = flag.Bool("crawl", false, "Crawl the DHT and measure every node found")
+	enrFlag       = flag.String("enr", "", "The ENR of the node you want to measure")
 )
 
 func main() {
@@ -31,6 +33,22 @@ func main() {
 		bootNodes = append(bootNodes, enode.MustParse(url))
 	}
 
+	if *crawlFlag {
+		crawl(bootNodes)
+	} else if *enrFlag == "" {
+		log.Fatal("please provide the ENR of the node you want to measure")
+	} else {
+		nd := enode.MustParse(*enrFlag)
+		client, err := measure.Listen()
+		if err != nil {
+			log.Fatalf("the measurement client cannot be created: %v", err)
+		}
+		result, err := client.Run(nd)
+		// TODO: display result
+	}
+}
+
+func crawl(bootNodes []*enode.Node) {
 	cfg := &crawler.Config{
 		BootNodes: bootNodes,
 		Logger:    log.New(os.Stderr, "crawler: ", log.LstdFlags|log.Lmsgprefix),
@@ -49,7 +67,8 @@ func main() {
 			log.Fatalf("the crawler stopped unexpectedly: %v", err)
 		}
 		go func(){
-			client.Run(nd)
+			result, err := client.Run(nd)
+			// TODO: display result
 		}()
 	}
 }
