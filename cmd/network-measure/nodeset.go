@@ -2,6 +2,7 @@ package main
 
 import (
 	clist "container/list"
+	"fmt"
 	"log"
 	"time"
 
@@ -37,15 +38,16 @@ func (s *nodeSet) last() *node {
 	if s.l.Len() == 0 {
 		return nil
 	} else {
-		return s.l.Back().Value.(*node)
+		// We need to copy the node. Otherwise, it can be changed on the fly.
+		return &(*s.l.Back().Value.(*node))
 	}
 }
 
 func (s *nodeSet) remove(id enode.ID) {
 	e := s.ht[id]
 	if e != nil {
-		s.log.Printf("removed id=%s", id.TerminalString())
 		s.l.Remove(e)
+		s.log.Printf("removed id=%s nodeset={%v}", id.TerminalString(), s)
 		delete(s.ht, id)
 	}
 }
@@ -53,10 +55,14 @@ func (s *nodeSet) remove(id enode.ID) {
 func (s *nodeSet) refresh(id enode.ID) {
 	e := s.ht[id]
 	if e != nil {
-		s.log.Printf("refreshed id=%s", id.TerminalString())
 		s.l.MoveToFront(e)
 		e.Value.(*node).expiry = time.Now().Add(timeout)
+		s.log.Printf("refreshed id=%s nodeset={%v}", id.TerminalString(), s)
 	}
+}
+
+func (s *nodeSet) String() string {
+	return fmt.Sprintf("len=%v", s.len())
 }
 
 func (s *nodeSet) len() int {
@@ -81,15 +87,15 @@ func (s *nodeSet) add(n *enode.Node, res measure.Result) {
 	e, ok := s.ht[n.ID()]
 	if !ok {
 		// The node is not in the set.
-		s.log.Printf("added id=%s", n.ID().TerminalString())
 		el := s.l.PushFront(&node{n, res, time.Now().Add(timeout)})
 		s.ht[n.ID()] = el
+		s.log.Printf("added id=%s result=%v nodeset={%v}", n.ID().TerminalString(), res, s)
 		return
 	}
 	if n.Seq() > e.Value.(*node).nd.Seq() {
 		// The new node has a higher seq number.
-		s.log.Printf("updated id=%s", n.ID().TerminalString())
 		e.Value = &node{n, res, time.Now().Add(timeout)}
 		s.l.MoveToFront(e)
+		s.log.Printf("updated id=%s result=%v nodeset={%v}", n.ID().TerminalString(), res, s)
 	}
 }

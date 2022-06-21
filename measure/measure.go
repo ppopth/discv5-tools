@@ -14,7 +14,7 @@ import (
 
 const (
 	maxPacketSize = 1280
-	maxRequests   = 20
+	maxRequests   = 50
 	numAttempts   = 100
 	timeout       = 3 * time.Second
 )

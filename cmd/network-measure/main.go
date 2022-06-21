@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/params"
@@ -15,12 +16,20 @@ import (
 
 const (
 	maxMeasurements = 20
+	maxRefreshs     = 40
 )
 
 var (
 	bootnodesFlag = flag.String("bootnodes", "", "Comma separated nodes used for bootstrapping")
 	crawlFlag     = flag.Bool("crawl", false, "Crawl the DHT and measure every node found")
 	enrFlag       = flag.String("enr", "", "The ENR of the node you want to measure")
+)
+
+var (
+	// The mutex used to access the nodeset in multiple routines.
+	lock    sync.Mutex
+	nodeset *nodeSet
+	timer   chan interface{}
 )
 
 func main() {
@@ -67,9 +76,12 @@ func crawl(bootNodes []*enode.Node) {
 		log.Fatalf("the measurement client cannot be created: %v", err)
 	}
 
-	//  The mutex used to access the nodeset in multiple routines.
-	var lock sync.Mutex
-	nodeset := newNodeset(log.New(os.Stderr, "nodeset: ", log.LstdFlags|log.Lmsgprefix))
+	nodeset = newNodeset(log.New(os.Stderr, "nodeset: ", log.LstdFlags|log.Lmsgprefix))
+	// Run a routine to check the nodes in the nodeset regularly if they are
+	// still alive.
+	timer = make(chan interface{})
+	go gc(client)
+
 	// This semaphore is used to limit the number of concurrent measurements.
 	semaphore := make(chan interface{}, maxMeasurements)
 	for {
@@ -90,9 +102,7 @@ func crawl(bootNodes []*enode.Node) {
 		var empty interface{}
 		semaphore <- empty
 		go func() {
-			defer func() {
-				<-semaphore
-			}()
+			defer func() { <-semaphore }()
 			result, err := client.Run(nd)
 			if err != nil {
 				log.Printf("error: %v\n", err)
@@ -100,7 +110,70 @@ func crawl(bootNodes []*enode.Node) {
 			}
 			lock.Lock()
 			defer lock.Unlock()
+			emptied := nodeset.len() == 0
 			nodeset.add(nd, *result)
+			if emptied && nodeset.len() == 1 {
+				go func() {
+					<-time.After(nodeset.last().expiry.Sub(time.Now()))
+					var empty interface{}
+					timer <- empty
+				}()
+			}
 		}()
+	}
+}
+
+func gc(client *measure.Client) {
+	// This semaphore is used to limit the number of concurrent refreshes.
+	semaphore := make(chan interface{}, maxRefreshs)
+	for range timer {
+		var wg sync.WaitGroup
+		lock.Lock()
+		for e := nodeset.l.Back(); e != nil && e.Value.(*node).expiry.Before(time.Now()); e = e.Prev() {
+			n := e.Value.(*node)
+			var empty interface{}
+			semaphore <- empty
+			wg.Add(1)
+			go func(n node) {
+				defer wg.Done()
+				defer func() { <-semaphore }()
+				success := false
+				for i := 0; i < 3; i++ {
+					_, err := client.Send(n.nd)
+					if err != nil {
+						continue
+					}
+					success = true
+					break
+				}
+				lock.Lock()
+				defer lock.Unlock()
+				// Check if the ENR of the node has changed or not.
+				e := nodeset.ht[n.nd.ID()]
+				if e == nil || e.Value.(*node).nd.Seq() != n.nd.Seq() {
+					return
+				}
+
+				if success {
+					nodeset.refresh(n.nd.ID())
+				} else {
+					nodeset.remove(n.nd.ID())
+				}
+			}(*n)
+		}
+		lock.Unlock()
+		wg.Wait()
+
+		// Check if we need to set another timer.
+		lock.Lock()
+		if nodeset.len() != 0 {
+			duration := nodeset.last().expiry.Sub(time.Now())
+			go func() {
+				<-time.After(duration)
+				var empty interface{}
+				timer <- empty
+			}()
+		}
+		lock.Unlock()
 	}
 }
