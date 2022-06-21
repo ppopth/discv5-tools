@@ -131,7 +131,7 @@ func (c *Client) Close() {
 	})
 }
 
-func (c *Client) send(nd *enode.Node) (*v5wire.Header, error) {
+func (c *Client) Send(nd *enode.Node) (*v5wire.Header, error) {
 	// Use the semaphore to limit the number of active calls.
 	var empty interface{}
 	c.semaphore <- empty
@@ -179,7 +179,7 @@ func (c *Client) Run(nd *enode.Node) (*Result, error) {
 	timeouts := 0
 	for i := 0; i < numAttempts; i++ {
 		start := time.Now()
-		_, err := c.send(nd)
+		_, err := c.Send(nd)
 		if err == errTimeout {
 			timeouts++
 			continue

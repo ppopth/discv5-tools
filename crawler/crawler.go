@@ -40,8 +40,6 @@ type Crawler struct {
 	disc discv5
 	// The private key used to run the ethereum node.
 	privateKey *ecdsa.PrivateKey
-	// The store containing the IDs of alive nodes that have been seen.
-	store map[enode.ID]bool
 	// The log used inside the crawler.
 	log *log.Logger
 
@@ -71,7 +69,6 @@ func New(config *Config) *Crawler {
 	return &Crawler{
 		config:     config,
 		privateKey: privateKey,
-		store:      make(map[enode.ID]bool),
 		log:        config.Logger,
 	}
 }
@@ -130,10 +127,6 @@ func (c *Crawler) run() {
 	defer c.loopWG.Done()
 	for iter.Next() {
 		n := iter.Node()
-		if _, ok := c.store[n.ID()]; ok {
-			c.log.Printf("found duplicated node (id=%s)", n.ID().TerminalString())
-			continue
-		}
 		// We have to directly request the ENR from the node to make sure that
 		// the node is alive.
 		nn, err := c.disc.RequestENR(n)
@@ -143,7 +136,6 @@ func (c *Crawler) run() {
 			continue
 		}
 		// Save the alive node to check for the duplication later.
-		c.store[n.ID()] = true
 		c.log.Printf("found alive node (id=%s)", nn.ID().TerminalString())
 		c.ndCh <- nn
 	}
