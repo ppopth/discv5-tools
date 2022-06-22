@@ -62,6 +62,7 @@ func main() {
 		}
 		result, err := client.Run(nd)
 		// TODO: display result
+		_ = result
 	}
 }
 
