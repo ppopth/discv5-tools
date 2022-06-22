@@ -131,7 +131,7 @@ func (c *Client) Close() {
 	})
 }
 
-func (c *Client) Send(nd *enode.Node) (*v5wire.Header, error) {
+func (c *Client) Send(nd *enode.Node) (*v5wire.Header, time.Duration, error) {
 	// Use the semaphore to limit the number of active calls.
 	var empty interface{}
 	c.semaphore <- empty
@@ -139,16 +139,17 @@ func (c *Client) Send(nd *enode.Node) (*v5wire.Header, error) {
 		<-c.semaphore
 	}()
 
+	start := time.Now()
 	// Generate random packet.
 	head, msgData, err := wire.GenRandomPacket(c.ln.ID(), nd.ID())
 	if err != nil {
-		return nil, err
+		return nil, time.Since(start), err
 	}
 
 	// Encode the raw packet which is ready to be sent.
 	encoded, err := wire.EncodeRawPacket(nd.ID(), head, msgData)
 	if err != nil {
-		return nil, err
+		return nil, time.Since(start), err
 	}
 
 	c.lock.Lock()
@@ -160,7 +161,7 @@ func (c *Client) Send(nd *enode.Node) (*v5wire.Header, error) {
 	addr := &net.UDPAddr{IP: nd.IP(), Port: nd.UDP()}
 	_, err = c.usocket.WriteToUDP(encoded, addr)
 	if err != nil {
-		return nil, err
+		return nil, time.Since(start), err
 	}
 
 	select {
@@ -168,9 +169,9 @@ func (c *Client) Send(nd *enode.Node) (*v5wire.Header, error) {
 		c.lock.Lock()
 		delete(c.activeCallByNonce, head.Nonce)
 		c.lock.Unlock()
-		return nil, errTimeout
+		return nil, time.Since(start), errTimeout
 	case respHead := <-ch:
-		return respHead, nil
+		return respHead, time.Since(start), nil
 	}
 }
 
@@ -178,15 +179,13 @@ func (c *Client) Run(nd *enode.Node) (*Result, error) {
 	avgRtt := int64(0)
 	timeouts := 0
 	for i := 0; i < numAttempts; i++ {
-		start := time.Now()
-		_, err := c.Send(nd)
+		_, elapsed, err := c.Send(nd)
 		if err == errTimeout {
 			timeouts++
 			continue
 		} else if err != nil {
 			return nil, err
 		}
-		elapsed := time.Since(start)
 		avgRtt += int64(elapsed)
 	}
 	avgRtt /= numAttempts

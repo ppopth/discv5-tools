@@ -139,7 +139,7 @@ func gc(client *measure.Client) {
 				defer func() { <-semaphore }()
 				success := false
 				for i := 0; i < 3; i++ {
-					_, err := client.Send(n.nd)
+					_, _, err := client.Send(n.nd)
 					if err != nil {
 						continue
 					}
