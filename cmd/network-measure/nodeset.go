@@ -12,7 +12,7 @@ import (
 )
 
 const (
-	timeout = 10 * time.Minute
+	timeout = 15 * time.Minute
 )
 
 type node struct {
@@ -101,15 +101,34 @@ func (s *nodeSet) add(n *enode.Node, res measure.Result) {
 	}
 }
 
+type nodeJson struct {
+	NodeUrl string
+	Result  measure.Result
+}
+
 func (s *nodeSet) MarshalJSON() ([]byte, error) {
-	type nodeJson struct {
-		NodeUrl string
-		Result  measure.Result
-	}
 	nodes := []nodeJson{}
 	for e := s.l.Front(); e != nil; e = e.Next() {
 		node := e.Value.(*node)
 		nodes = append(nodes, nodeJson{node.nd.String(), node.value})
 	}
 	return json.Marshal(nodes)
+}
+
+func (s *nodeSet) UnmarshalJSON(b []byte) error {
+	var nodes []nodeJson
+	err := json.Unmarshal(b, &nodes)
+	if err != nil {
+		return err
+	}
+	for _, n := range nodes {
+		nn, err := enode.Parse(enode.ValidSchemes, n.NodeUrl)
+		if err != nil {
+			return err
+		}
+		s.remove(nn.ID())
+		el := s.l.PushFront(&node{nn, n.Result, time.Now()})
+		s.ht[nn.ID()] = el
+	}
+	return nil
 }

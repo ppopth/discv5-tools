@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"io/ioutil"
 	"log"
 	"os"
 	"strings"
@@ -85,6 +86,25 @@ func crawl(bootNodes []*enode.Node, file string) {
 	go gc(client)
 
 	if file != "" {
+		f, err := os.Open(file)
+		if err != nil {
+			log.Fatalf("error: opening a file: %v", file)
+		}
+		b, err := ioutil.ReadAll(f)
+		if err != nil {
+			log.Fatalf("error: reading a file: %v", file)
+		}
+		lock.Lock()
+		err = json.Unmarshal(b, &nodeset)
+		if err != nil {
+			log.Fatalf("error: unmarshaling the node set: %v", file)
+		}
+		l := nodeset.len()
+		lock.Unlock()
+		if l != 0 {
+			var empty interface{}
+			timer <- empty
+		}
 		// Run a routine to autosave the nodeset to the file.
 		go autosave(file)
 	}
@@ -138,14 +158,14 @@ func gc(client *measure.Client) {
 		lock.Lock()
 		for e := nodeset.l.Back(); e != nil && e.Value.(*node).expiry.Before(time.Now()); e = e.Prev() {
 			n := e.Value.(*node)
-			var empty interface{}
-			semaphore <- empty
 			wg.Add(1)
 			go func(n node) {
+				var empty interface{}
+				semaphore <- empty
 				defer wg.Done()
 				defer func() { <-semaphore }()
 				success := false
-				for i := 0; i < 3; i++ {
+				for i := 0; i < 5; i++ {
 					_, _, err := client.Send(n.nd)
 					if err != nil {
 						continue
