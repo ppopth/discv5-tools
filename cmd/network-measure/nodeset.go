@@ -19,6 +19,9 @@ type node struct {
 	nd     *enode.Node
 	value  measure.Result
 	expiry time.Time
+
+	refreshedAt time.Time
+	updatedAt   time.Time
 }
 
 type nodeSet struct {
@@ -58,6 +61,7 @@ func (s *nodeSet) refresh(id enode.ID) {
 	if e != nil {
 		s.l.MoveToFront(e)
 		e.Value.(*node).expiry = time.Now().Add(timeout)
+		e.Value.(*node).refreshedAt = time.Now()
 		s.log.Printf("refreshed id=%s nodeset={%v}", id.TerminalString(), s)
 	}
 }
@@ -88,14 +92,14 @@ func (s *nodeSet) add(n *enode.Node, res measure.Result) {
 	e, ok := s.ht[n.ID()]
 	if !ok {
 		// The node is not in the set.
-		el := s.l.PushFront(&node{n, res, time.Now().Add(timeout)})
+		el := s.l.PushFront(&node{n, res, time.Now().Add(timeout), time.Now(), time.Now()})
 		s.ht[n.ID()] = el
 		s.log.Printf("added id=%s result=%v nodeset={%v}", n.ID().TerminalString(), res, s)
 		return
 	}
 	if n.Seq() > e.Value.(*node).nd.Seq() {
 		// The new node has a higher seq number.
-		e.Value = &node{n, res, time.Now().Add(timeout)}
+		e.Value = &node{n, res, time.Now().Add(timeout), time.Now(), time.Now()}
 		s.l.MoveToFront(e)
 		s.log.Printf("updated id=%s result=%v nodeset={%v}", n.ID().TerminalString(), res, s)
 	}
@@ -104,13 +108,16 @@ func (s *nodeSet) add(n *enode.Node, res measure.Result) {
 type nodeJson struct {
 	NodeUrl string
 	Result  measure.Result
+
+	RefreshedAt time.Time
+	UpdatedAt   time.Time
 }
 
 func (s *nodeSet) MarshalJSON() ([]byte, error) {
 	nodes := []nodeJson{}
 	for e := s.l.Front(); e != nil; e = e.Next() {
 		node := e.Value.(*node)
-		nodes = append(nodes, nodeJson{node.nd.String(), node.value})
+		nodes = append(nodes, nodeJson{node.nd.String(), node.value, node.refreshedAt, node.updatedAt})
 	}
 	return json.Marshal(nodes)
 }
@@ -127,7 +134,7 @@ func (s *nodeSet) UnmarshalJSON(b []byte) error {
 			return err
 		}
 		s.remove(nn.ID())
-		el := s.l.PushFront(&node{nn, n.Result, time.Now()})
+		el := s.l.PushFront(&node{nn, n.Result, time.Now(), n.RefreshedAt, n.UpdatedAt})
 		s.ht[nn.ID()] = el
 	}
 	return nil
