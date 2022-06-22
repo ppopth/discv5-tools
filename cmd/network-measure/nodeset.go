@@ -2,6 +2,7 @@ package main
 
 import (
 	clist "container/list"
+	"encoding/json"
 	"fmt"
 	"log"
 	"time"
@@ -98,4 +99,17 @@ func (s *nodeSet) add(n *enode.Node, res measure.Result) {
 		s.l.MoveToFront(e)
 		s.log.Printf("updated id=%s result=%v nodeset={%v}", n.ID().TerminalString(), res, s)
 	}
+}
+
+func (s *nodeSet) MarshalJSON() ([]byte, error) {
+	type nodeJson struct {
+		NodeUrl string
+		Result  measure.Result
+	}
+	nodes := []nodeJson{}
+	for e := s.l.Front(); e != nil; e = e.Next() {
+		node := e.Value.(*node)
+		nodes = append(nodes, nodeJson{node.nd.String(), node.value})
+	}
+	return json.Marshal(nodes)
 }

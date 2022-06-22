@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"log"
 	"os"
@@ -23,6 +24,7 @@ var (
 	bootnodesFlag = flag.String("bootnodes", "", "Comma separated nodes used for bootstrapping")
 	crawlFlag     = flag.Bool("crawl", false, "Crawl the DHT and measure every node found")
 	enrFlag       = flag.String("enr", "", "The ENR of the node you want to measure")
+	fileFlag      = flag.String("file", "", "The file of the node set")
 )
 
 var (
@@ -48,7 +50,7 @@ func main() {
 	}
 
 	if *crawlFlag {
-		crawl(bootNodes)
+		crawl(bootNodes, *fileFlag)
 	} else if *enrFlag == "" {
 		log.Fatal("please provide the ENR of the node you want to measure")
 	} else {
@@ -62,7 +64,7 @@ func main() {
 	}
 }
 
-func crawl(bootNodes []*enode.Node) {
+func crawl(bootNodes []*enode.Node, file string) {
 	cfg := &crawler.Config{
 		BootNodes: bootNodes,
 		Logger:    log.New(os.Stderr, "crawler: ", log.LstdFlags|log.Lmsgprefix),
@@ -81,6 +83,11 @@ func crawl(bootNodes []*enode.Node) {
 	// still alive.
 	timer = make(chan interface{})
 	go gc(client)
+
+	if file != "" {
+		// Run a routine to autosave the nodeset to the file.
+		go autosave(file)
+	}
 
 	// This semaphore is used to limit the number of concurrent measurements.
 	semaphore := make(chan interface{}, maxMeasurements)
@@ -175,5 +182,30 @@ func gc(client *measure.Client) {
 			}()
 		}
 		lock.Unlock()
+	}
+}
+
+func autosave(file string) {
+	c := time.Tick(1 * time.Minute)
+	for range c {
+		lock.Lock()
+		f, err := os.Create(file)
+		if err != nil {
+			log.Fatalf("error: creating a file: %v", file)
+		}
+		text, err := json.Marshal(nodeset)
+		if err != nil {
+			log.Fatalf("error: marshaling the node set: %v", file)
+		}
+		_, err = f.Write(text)
+		if err != nil {
+			log.Fatalf("error: writing the node set json to the file: %v", file)
+		}
+		lock.Unlock()
+		err = f.Sync()
+		if err != nil {
+			log.Fatalf("error: flushing the node set json to the file: %v", file)
+		}
+		f.Close()
 	}
 }
