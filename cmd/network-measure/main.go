@@ -140,6 +140,10 @@ func crawl(bootNodes []*enode.Node, file string) {
 				log.Printf("error: %v\n", err)
 				return
 			}
+			// If the loss rate is 1, don't add it.
+			if result.LossRate == 1 {
+				return
+			}
 			lock.Lock()
 			defer lock.Unlock()
 			emptied := nodeset.len() == 0
