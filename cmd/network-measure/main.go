@@ -92,23 +92,26 @@ func crawl(bootNodes []*enode.Node, file string) {
 
 	if file != "" {
 		f, err := os.Open(file)
-		if err != nil {
-			log.Fatalf("error: opening a file: %v", file)
-		}
-		b, err := ioutil.ReadAll(f)
-		if err != nil {
-			log.Fatalf("error: reading a file: %v", file)
-		}
-		lock.Lock()
-		err = json.Unmarshal(b, &nodeset)
-		if err != nil {
-			log.Fatalf("error: unmarshaling the node set: %v", file)
-		}
-		l := nodeset.len()
-		lock.Unlock()
-		if l != 0 {
-			var empty interface{}
-			timer <- empty
+		// If we can read the file, load the file.
+		if err == nil {
+			if err != nil {
+				log.Fatalf("error: opening a file: %v", file)
+			}
+			b, err := ioutil.ReadAll(f)
+			if err != nil {
+				log.Fatalf("error: reading a file: %v", file)
+			}
+			lock.Lock()
+			err = json.Unmarshal(b, &nodeset)
+			if err != nil {
+				log.Fatalf("error: unmarshaling the node set: %v", file)
+			}
+			l := nodeset.len()
+			lock.Unlock()
+			if l != 0 {
+				var empty interface{}
+				timer <- empty
+			}
 		}
 		// Run a routine to autosave the nodeset to the file.
 		go autosave(file)
