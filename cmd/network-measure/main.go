@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
@@ -61,8 +62,11 @@ func main() {
 			log.Fatalf("the measurement client cannot be created: %v", err)
 		}
 		result, err := client.Run(nd)
-		// TODO: display result
-		_ = result
+		if err != nil {
+			fmt.Printf("error: %v\n", err)
+		} else {
+			fmt.Printf("result: %v\n", result)
+		}
 	}
 }
 
