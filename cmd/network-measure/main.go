@@ -109,8 +109,7 @@ func crawl(bootNodes []*enode.Node, file string) {
 			l := nodeset.len()
 			lock.Unlock()
 			if l != 0 {
-				var empty interface{}
-				timer <- empty
+				timer <- struct{}{}
 			}
 		}
 		// Run a routine to autosave the nodeset to the file.
@@ -134,8 +133,7 @@ func crawl(bootNodes []*enode.Node, file string) {
 		}
 		lock.Unlock()
 
-		var empty interface{}
-		semaphore <- empty
+		semaphore <- struct{}{}
 		go func() {
 			defer func() { <-semaphore }()
 			result, err := client.Run(nd)
@@ -154,8 +152,7 @@ func crawl(bootNodes []*enode.Node, file string) {
 			if emptied && nodeset.len() == 1 {
 				go func() {
 					<-time.After(nodeset.last().expiry.Sub(time.Now()))
-					var empty interface{}
-					timer <- empty
+					timer <- struct{}{}
 				}()
 			}
 		}()
@@ -172,8 +169,7 @@ func gc(client *measure.Client) {
 			n := e.Value.(*node)
 			wg.Add(1)
 			go func(n node) {
-				var empty interface{}
-				semaphore <- empty
+				semaphore <- struct{}{}
 				defer wg.Done()
 				defer func() { <-semaphore }()
 				success := false
@@ -209,8 +205,7 @@ func gc(client *measure.Client) {
 			duration := nodeset.last().expiry.Sub(time.Now())
 			go func() {
 				<-time.After(duration)
-				var empty interface{}
-				timer <- empty
+				timer <- struct{}{}
 			}()
 		}
 		lock.Unlock()

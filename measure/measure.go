@@ -133,8 +133,7 @@ func (c *Client) Close() {
 
 func (c *Client) Send(nd *enode.Node) (*v5wire.Header, time.Duration, error) {
 	// Use the semaphore to limit the number of active calls.
-	var empty interface{}
-	c.semaphore <- empty
+	c.semaphore <- struct{}{}
 	defer func() {
 		<-c.semaphore
 	}()
