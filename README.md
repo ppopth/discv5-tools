@@ -102,4 +102,4 @@ If we don't receive a WHOAREYOU packet back after **3 seconds**, we count that r
 
 After all 100 rounds of packets, we measure the average RTT as the average among all the successful rounds and the packet loss rate as the lost rounds divided by 100.
 
-Notice that we decided to send ordinary message packets with random message data to measure the RTT, not [PING request](https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#ping-request-0x01) or [FINDNODE request](https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#findnode-request-0x03), because such requests require a handshake which significantly increases the latency.
+Notice that we decided to send ordinary message packets with random message data to measure the RTT, not [PING request](https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#ping-request-0x01) or [FINDNODE request](https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#findnode-request-0x03), because such requests require a handshake which requires more work to do.
