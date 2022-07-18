@@ -94,9 +94,6 @@ func crawl(bootNodes []*enode.Node, file string) {
 		f, err := os.Open(file)
 		// If we can read the file, load the file.
 		if err == nil {
-			if err != nil {
-				log.Fatalf("error: opening a file: %v", file)
-			}
 			b, err := ioutil.ReadAll(f)
 			if err != nil {
 				log.Fatalf("error: reading a file: %v", file)
