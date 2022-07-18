@@ -72,8 +72,9 @@ func main() {
 
 func crawl(bootNodes []*enode.Node, file string) {
 	cfg := &crawler.Config{
-		BootNodes: bootNodes,
-		Logger:    log.New(os.Stderr, "crawler: ", log.LstdFlags|log.Lmsgprefix),
+		BootNodes:     bootNodes,
+		Logger:        log.New(os.Stderr, "crawler: ", log.LstdFlags|log.Lmsgprefix),
+		CheckLiveness: true,
 	}
 	cr := crawler.New(cfg)
 	cr.Start()

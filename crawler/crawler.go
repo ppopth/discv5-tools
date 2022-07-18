@@ -31,6 +31,9 @@ type Config struct {
 	BootNodes []*enode.Node
 	// Logger.
 	Logger *log.Logger
+	// If it's true, it will check the liveness of the node before outputing
+	// the node.
+	CheckLiveness bool
 }
 
 // Crawler is a container for states of a cralwer node.
@@ -127,17 +130,22 @@ func (c *Crawler) run() {
 	defer c.loopWG.Done()
 	for iter.Next() {
 		n := iter.Node()
-		// We have to directly request the ENR from the node to make sure that
-		// the node is alive.
-		nn, err := c.disc.RequestENR(n)
-		if err != nil {
-			// If it's not alive, log and skip to the next node.
-			c.log.Printf("found unalive node (id=%s)", n.ID().TerminalString())
-			continue
+		if c.config.CheckLiveness {
+			// We have to directly request the ENR from the node to make sure that
+			// the node is alive.
+			nn, err := c.disc.RequestENR(n)
+			if err != nil {
+				// If it's not alive, log and skip to the next node.
+				c.log.Printf("found unalive node (id=%s)", n.ID().TerminalString())
+				continue
+			}
+			// Save the alive node to check for the duplication later.
+			c.log.Printf("found alive node (id=%s)", nn.ID().TerminalString())
+			c.ndCh <- nn
+		} else {
+			c.log.Printf("found a node (id=%s)", n.ID().TerminalString())
+			c.ndCh <- n
 		}
-		// Save the alive node to check for the duplication later.
-		c.log.Printf("found alive node (id=%s)", nn.ID().TerminalString())
-		c.ndCh <- nn
 	}
 }
 
